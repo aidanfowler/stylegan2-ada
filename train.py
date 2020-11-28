@@ -37,6 +37,8 @@ def setup_training_options(
     data       = None, # Training dataset (required): <path>
     res        = None, # Override dataset resolution: <int>, default = highest available
     mirror     = None, # Augment dataset with x-flips: <bool>, default = False
+    mirrory    = None, # Augment dataset with y-flips: <bool>, default = False
+    use_raw    = None, 
 
     # Metrics (not included in desc).
     metrics    = None, # List of metric names: [], ['fid50k_full'] (default), ...
@@ -86,12 +88,12 @@ def setup_training_options(
     assert isinstance(snap, int)
     if snap < 1:
         raise UserError('--snap must be at least 1')
-    args.image_snapshot_ticks = snap
-    args.network_snapshot_ticks = snap
+    args.image_snapshot_ticks = 1
+    args.network_snapshot_ticks = 20
 
-    # -----------------------------------
-    # Training dataset: data, res, mirror
-    # -----------------------------------
+    # ---------------------------------------------
+    # Training dataset: data, res, mirror, mirrory
+    # ---------------------------------------------
 
     assert data is not None
     assert isinstance(data, str)
@@ -102,6 +104,7 @@ def setup_training_options(
 
     with tf.Graph().as_default(), tflib.create_session().as_default(): # pylint: disable=not-context-manager
         args.train_dataset_args = dnnlib.EasyDict(path=data, max_label_size='full')
+        args.train_dataset_args.use_raw = use_raw
         dataset_obj = dataset.load_dataset(**args.train_dataset_args) # try to load the data and see what comes out
         args.train_dataset_args.resolution = dataset_obj.shape[-1] # be explicit about resolution
         args.train_dataset_args.max_label_size = dataset_obj.label_size # be explicit about label size
@@ -122,11 +125,19 @@ def setup_training_options(
 
     if mirror is None:
         mirror = False
-    else:
-        assert isinstance(mirror, bool)
-        if mirror:
-            desc += '-mirror'
+    assert isinstance(mirror, bool)
+    if mirror:
+        desc += '-mirror'
     args.train_dataset_args.mirror_augment = mirror
+
+    if mirrory is None:
+        mirrory = False
+    assert isinstance(mirrory, bool)
+    if mirrory:
+        desc += '-mirrory'
+    args.train_dataset_args.mirror_augment_v = mirrory
+
+    args.train_dataset_args.use_raw = use_raw
 
     # ----------------------------
     # Metrics: metrics, metricdata
@@ -160,7 +171,10 @@ def setup_training_options(
     desc += f'-{cfg}'
 
     cfg_specs = {
-        'auto':          dict(ref_gpus=-1, kimg=25000,  mb=-1, mbstd=-1, fmaps=-1,  lrate=-1,     gamma=-1,   ema=-1,  ramp=0.05, map=2), # populated dynamically based on 'gpus' and 'res'
+        'auto':     dict(ref_gpus=-1, kimg=25000,  mb=-1, mbstd=-1, fmaps=-1,  lrate=-1,     gamma=-1,   ema=-1,  ramp=0.05, map=2), # populated dynamically based on 'gpus' and 'res'
+        'aidan':     dict(ref_gpus=4,  kimg=25000,  mb=16, mbstd=4,  fmaps=1,   lrate=0.002,  gamma=10,    ema=10,  ramp=None, map=8),
+        'aidan-complex':    dict(ref_gpus=4,  kimg=25000,  mb=16, mbstd=4,  fmaps=1,   lrate=0.002,  gamma=2,    ema=10,  ramp=None, map=8),
+        'aidantest1gpu':    dict(ref_gpus=1,  kimg=25000,  mb=4, mbstd=4,  fmaps=1,   lrate=0.002,  gamma=2,    ema=10,  ramp=None, map=8), #for running on 1 gpu before scheduling on 4
         'stylegan2':     dict(ref_gpus=8,  kimg=25000,  mb=32, mbstd=4,  fmaps=1,   lrate=0.002,  gamma=10,   ema=10,  ramp=None, map=8), # uses mixed-precision, unlike original StyleGAN2
         'paper256':      dict(ref_gpus=8,  kimg=25000,  mb=64, mbstd=8,  fmaps=0.5, lrate=0.0025, gamma=1,    ema=20,  ramp=None, map=8),
         'paper512':      dict(ref_gpus=8,  kimg=25000,  mb=64, mbstd=8,  fmaps=1,   lrate=0.0025, gamma=0.5,  ema=20,  ramp=None, map=8),
@@ -195,7 +209,7 @@ def setup_training_options(
     args.G_args.num_fp16_res = args.D_args.num_fp16_res = 4 # enable mixed-precision training
     args.G_args.conv_clamp = args.D_args.conv_clamp = 256 # clamp activations to avoid float16 overflow
 
-    if cfg == 'cifar':
+    if cfg == 'cifar' or cfg.split('-')[-1] == 'complex':
         args.loss_args.pl_weight = 0 # disable path length regularization
         args.G_args.style_mixing_prob = None # disable style mixing
         args.D_args.architecture = 'orig' # disable residual skip connections
@@ -381,6 +395,12 @@ def setup_training_options(
         'ffhq1024':     'https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada/pretrained/transfer-learning-source-nets/ffhq-res1024-mirror-stylegan2-noaug.pkl',
         'celebahq256':  'https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada/pretrained/transfer-learning-source-nets/celebahq-res256-mirror-paper256-kimg100000-ada-target0.5.pkl',
         'lsundog256':   'https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada/pretrained/transfer-learning-source-nets/lsundog-res256-paper256-kimg100000-noaug.pkl',
+        'afhqcat512':      'https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada/pretrained/afhqcat.pkl',
+        'afhqdog512':      'https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada/pretrained/afhqdog.pkl',
+        'afhqwild512':     'https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada/pretrained/afhqwild.pkl',
+        'brecahad512':     'https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada/pretrained/brecahad.pkl',
+        'cifar10':      'https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada/pretrained/cifar10.pkl',
+        'metfaces':     'https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada/pretrained/metfaces.pkl',
     }
 
     assert resume is None or isinstance(resume, str)
@@ -501,6 +521,12 @@ transfer learning source networks (--resume):
   ffhq1024       FFHQ trained at 1024x1024 resolution.
   celebahq256    CelebA-HQ trained at 256x256 resolution.
   lsundog256     LSUN Dog trained at 256x256 resolution.
+  afhqcat512     AFHQ Cat trained at 512x512 resolution.
+  afhqdog512     AFHQ Dog trained at 512x512 resolution.
+  afhqwild512    AFHQ Wild trained at 512x512 resolution.
+  brecahad512    BreCaHAD trained at 512x512 resolution.
+  cifar10        CIFAR10 trained at 32x32 resolution.
+  metfaces512    MetFaces trained at 512x512 resolution.
   <path or URL>  Custom network pickle.
 '''
 
@@ -524,13 +550,15 @@ def main():
     group.add_argument('--data',   help='Training dataset path (required)', metavar='PATH', required=True)
     group.add_argument('--res',    help='Dataset resolution (default: highest available)', type=int, metavar='INT')
     group.add_argument('--mirror', help='Augment dataset with x-flips (default: false)', type=_str_to_bool, metavar='BOOL')
+    group.add_argument('--mirrory', help='Augment dataset with y-flips (default: false)', type=_str_to_bool, metavar='BOOL')
+    group.add_argument('--use-raw', help='Use raw image dataset, i.e. created from create_from_images_raw (default: %(default)s)', default=False, metavar='BOOL', type=_str_to_bool)
 
     group = parser.add_argument_group('metrics')
     group.add_argument('--metrics',    help='Comma-separated list or "none" (default: fid50k_full)', type=_parse_comma_sep, metavar='LIST')
     group.add_argument('--metricdata', help='Dataset to evaluate metrics against (optional)', metavar='PATH')
 
     group = parser.add_argument_group('base config')
-    group.add_argument('--cfg',   help='Base config (default: auto)', choices=['auto', 'stylegan2', 'paper256', 'paper512', 'paper1024', 'cifar', 'cifarbaseline'])
+    group.add_argument('--cfg',   help='Base config (default: auto)', choices=['auto', 'aidan','aidan-complex', 'aidantest1gpu', 'stylegan2', 'paper256', 'paper512', 'paper1024', 'cifar', 'cifarbaseline'])
     group.add_argument('--gamma', help='Override R1 gamma', type=float, metavar='FLOAT')
     group.add_argument('--kimg',  help='Override training duration', type=int, metavar='INT')
 

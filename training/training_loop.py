@@ -25,8 +25,8 @@ from training import dataset
 # periodically during training.
 
 def setup_snapshot_image_grid(training_set):
-    gw = np.clip(7680 // training_set.shape[2], 7, 32)
-    gh = np.clip(4320 // training_set.shape[1], 4, 32)
+    gw = np.clip(7680 // training_set.shape[2], 10, 32)
+    gh = np.clip(4320 // training_set.shape[1], 10, 32)
 
     # Unconditional.
     if training_set.label_size == 0:
@@ -100,7 +100,7 @@ def training_loop(
     G_reg_interval          = 4,        # How often the perform regularization for G? Ignored if lazy_regularization=False.
     D_reg_interval          = 16,       # How often the perform regularization for D? Ignored if lazy_regularization=False.
     total_kimg              = 25000,    # Total length of the training, measured in thousands of real images.
-    kimg_per_tick           = 4,        # Progress snapshot interval.
+    kimg_per_tick           = 2,        # Progress snapshot interval.
     image_snapshot_ticks    = 50,       # How often to save image snapshots? None = only save 'reals.png' and 'fakes-init.png'.
     network_snapshot_ticks  = 50,       # How often to save network snapshots? None = only save 'networks-final.pkl'.
     resume_pkl              = None,     # Network pickle to resume training from.
@@ -133,10 +133,10 @@ def training_loop(
 
     print('Exporting sample images...')
     grid_size, grid_reals, grid_labels = setup_snapshot_image_grid(training_set)
-    save_image_grid(grid_reals, os.path.join(run_dir, 'reals.png'), drange=[0,255], grid_size=grid_size)
+    save_image_grid(grid_reals, os.path.join(run_dir, 'reals.jpg'), drange=[0,255], grid_size=grid_size)
     grid_latents = np.random.randn(np.prod(grid_size), *G.input_shape[1:])
     grid_fakes = Gs.run(grid_latents, grid_labels, is_validation=True, minibatch_size=minibatch_gpu)
-    save_image_grid(grid_fakes, os.path.join(run_dir, 'fakes_init.png'), drange=[-1,1], grid_size=grid_size)
+    save_image_grid(grid_fakes, os.path.join(run_dir, 'fakes_init.jpg'), drange=[-1,1], grid_size=grid_size)
 
     print(f'Replicating networks across {num_gpus} GPUs...')
     G_gpus = [G]
@@ -299,10 +299,10 @@ def training_loop(
                 progress_fn(cur_nimg // 1000, total_kimg)
 
             # Save snapshots.
-            if image_snapshot_ticks is not None and (done or cur_tick % image_snapshot_ticks == 0):
+            if image_snapshot_ticks is not None and (done or cur_tick % image_snapshot_ticks == 0 or (cur_tick <= 12)):
                 grid_fakes = Gs.run(grid_latents, grid_labels, is_validation=True, minibatch_size=minibatch_gpu)
-                save_image_grid(grid_fakes, os.path.join(run_dir, f'fakes{cur_nimg // 1000:06d}.png'), drange=[-1,1], grid_size=grid_size)
-            if network_snapshot_ticks is not None and (done or cur_tick % network_snapshot_ticks == 0):
+                save_image_grid(grid_fakes, os.path.join(run_dir, f'fakes{cur_nimg // 1000:06d}.jpg'), drange=[-1,1], grid_size=grid_size)
+            if network_snapshot_ticks is not None and (done or cur_tick % network_snapshot_ticks == 0 or (cur_tick <=12)):
                 pkl = os.path.join(run_dir, f'network-snapshot-{cur_nimg // 1000:06d}.pkl')
                 with open(pkl, 'wb') as f:
                     pickle.dump((G, D, Gs), f)
